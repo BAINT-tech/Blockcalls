@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BlockCall - Decentralized Video Calls</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- LiveKit Client -->
+  <script src="https://unpkg.com/livekit-client@2.5.7/dist/livekit-client.umd.min.js"></script>
+  
+  <!-- Ethers.js for wallet -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.0/dist/ethers.umd.min.js"></script>
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      color: white;
+    }
+    
+    .video-grid {
+      display: grid;
+      gap: 10px;
+      padding: 10px;
+      width: 100%;
+      height: 100%;
+    }
+    
+    .video-grid-1 { grid-template-columns: 1fr; }
+    .video-grid-2 { grid-template-columns: repeat(2, 1fr); }
+    .video-grid-3, .video-grid-4 { grid-template-columns: repeat(2, 1fr); }
+    .video-grid-5, .video-grid-6 { grid-template-columns: repeat(3, 1fr); }
+    
+    .video-tile {
+      position: relative;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      aspect-ratio: 16/9;
+    }
+    
+    .video-tile video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    
+    .participant-name {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.7);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      z-index: 10;
+    }
+    
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <!-- HOME SCREEN -->
+  <div id="homeScreen" class="min-h-screen p-6">
+    <!-- Header -->
+    <header class="max-w-6xl mx-auto mb-12">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-12 h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
+            <span class="text-2xl">📹</span>
+          </div>
+          <div>
+            <h1 class="text-3xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
+              BlockCall
+            </h1>
+            <p class="text-xs text-gray-400">Powered by LiveKit</p>
+          </div>
+        </div>
+        
+        <!-- Wallet Button -->
+        <button 
+          id="connectWalletBtn"
+          onclick="connectWallet()"
+          class="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 rounded-lg font-semibold transition-all"
+        >
+          Connect Wallet
+        </button>
+        
+        <div id="walletInfo" class="hidden flex items-center gap-3">
+          <div class="bg-gray-800 rounded-lg px-4 py-2 flex items-center gap-2">
+            <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+            <span id="walletAddress" class="text-sm font-mono"></span>
+          </div>
+          <button 
+            onclick="disconnectWallet()"
+            class="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+          >
+            ❌
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-6xl mx-auto">
+      <div class="text-center mb-12">
+        <h2 class="text-5xl font-bold mb-4">Video Calls That Never Fail</h2>
+        <p class="text-xl text-gray-400">Wallet-to-wallet • Group meetings • Blockchain verified</p>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-8 mb-12">
+        <!-- Wallet-to-Wallet Call -->
+        <div class="bg-gray-800/50 backdrop-blur-lg border border-gray-700 rounded-2xl p-8">
+          <div class="text-4xl mb-4">📞</div>
+          <h3 class="text-2xl font-bold mb-3">1-on-1 Call</h3>
+          <p class="text-gray-400 mb-6">Direct wallet-to-wallet video call</p>
+          
+          <input 
+            type="text" 
+            id="calleeWalletInput"
+            placeholder="Enter recipient wallet (0x...)"
+            class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white mb-4 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+          />
+          
+          <button 
+            onclick="startP2PCall()"
+            class="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 rounded-lg font-semibold transition-all"
+          >
+            📹 Start Video Call
+          </button>
+        </div>
+
+        <!-- Group Meeting -->
+        <div class="bg-gray-800/50 backdrop-blur-lg border border-gray-700 rounded-2xl p-8">
+          <div class="text-4xl mb-4">👥</div>
+          <h3 class="text-2xl font-bold mb-3">Group Meeting</h3>
+          <p class="text-gray-400 mb-6">Host meetings with multiple people</p>
+          
+          <button 
+            onclick="createMeeting()"
+            class="w-full py-4 bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 rounded-lg font-semibold transition-all mb-4"
+          >
+            🚀 Create New Meeting
+          </button>
+          
+          <div class="relative mb-4">
+            <div class="absolute inset-0 flex items-center">
+              <div class="w-full border-t border-gray-700"></div>
+            </div>
+            <div class="relative flex justify-center text-sm">
+              <span class="px-4 bg-gray-800/50 text-gray-400">or join existing</span>
+            </div>
+          </div>
+          
+          <input 
+            type="text" 
+            id="meetingCodeInput"
+            placeholder="Enter meeting code"
+            class="w-full px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-white mb-4 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-purple-500"
+            maxlength="12"
+          />
+          
+          <button 
+            onclick="joinMeeting()"
+            class="w-full py-3 bg-gray-700 hover:bg-gray-600 rounded-lg font-semibold transition-all"
+          >
+            Join Meeting
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- CALL SCREEN -->
+  <div id="callScreen" class="hidden min-h-screen flex flex-col">
+    <!-- Header -->
+    <div class="bg-gray-900/95 backdrop-blur-lg p-4 flex items-center justify-between">
+      <div>
+        <h3 id="callTitle" class="text-xl font-bold">In Call</h3>
+        <p id="callDuration" class="text-sm text-gray-400">00:00</p>
+      </div>
+      <div>
+        <span id="participantCount" class="text-sm text-gray-400">1 participant</span>
+      </div>
+    </div>
+
+    <!-- Video Grid -->
+    <div id="videoContainer" class="flex-1 bg-black">
+      <div id="videoGrid" class="video-grid video-grid-1 h-full"></div>
+    </div>
+
+    <!-- Controls -->
+    <div class="bg-gray-900/95 backdrop-blur-lg p-4">
+      <div class="flex items-center justify-center gap-4">
+        <button 
+          id="micBtn"
+          onclick="toggleMic()"
+          class="p-4 rounded-full bg-gray-700 hover:bg-gray-600 transition-all"
+          title="Mute/Unmute"
+        >
+          <span id="micIcon">🎤</span>
+        </button>
+        
+        <button 
+          id="camBtn"
+          onclick="toggleCam()"
+          class="p-4 rounded-full bg-gray-700 hover:bg-gray-600 transition-all"
+          title="Camera On/Off"
+        >
+          <span id="camIcon">📹</span>
+        </button>
+        
+        <button 
+          id="screenBtn"
+          onclick="toggleScreen()"
+          class="p-4 rounded-full bg-gray-700 hover:bg-gray-600 transition-all"
+          title="Share Screen"
+        >
+          <span id="screenIcon">🖥️</span>
+        </button>
+        
+        <button 
+          onclick="leaveCall()"
+          class="p-4 rounded-full bg-red-500 hover:bg-red-600 transition-all ml-4"
+          title="Leave Call"
+        >
+          <span>📞</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================
+    // CONFIGURATION
+    // ============================================
+    const API_URL = 'http://localhost:3001'; // ⚠️ CHANGE THIS TO YOUR DEPLOYED BACKEND URL
+    
+    // ============================================
+    // GLOBAL STATE
+    // ============================================
+    let walletAddress = null;
+    let currentRoom = null;
+    let localParticipant = null;
+    let isMicOn = true;
+    let isCamOn = true;
+    let isScreenSharing = false;
+    let callStartTime = null;
+    let callDurationInterval = null;
+
+    // ============================================
+    // WALLET FUNCTIONS
+    // ============================================
+    async function connectWallet() {
+      try {
+        if (!window.ethereum) {
+          alert('Please install MetaMask!');
+          return;
+        }
+
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        await provider.send('eth_requestAccounts', []);
+        const signer = await provider.getSigner();
+        walletAddress = await signer.getAddress();
+
+        // Update UI
+        document.getElementById('connectWalletBtn').classList.add('hidden');
+        document.getElementById('walletInfo').classList.remove('hidden');
+        document.getElementById('walletAddress').textContent = 
+          walletAddress.substring(0, 6) + '...' + walletAddress.substring(38);
+
+        console.log('✅ Wallet connected:', walletAddress);
+
+      } catch (error) {
+        console.error('❌ Wallet connection error:', error);
+        alert('Failed to connect wallet: ' + error.message);
+      }
+    }
+
+    function disconnectWallet() {
+      walletAddress = null;
+      document.getElementById('connectWalletBtn').classList.remove('hidden');
+      document.getElementById('walletInfo').classList.add('hidden');
+      console.log('👋 Wallet disconnected');
+    }
+
+    // ============================================
+    // API FUNCTIONS
+    // ============================================
+    async function apiRequest(endpoint, data) {
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'API request failed');
+      }
+      
+      return response.json();
+    }
+
+    // ============================================
+    // CALL FUNCTIONS
+    // ============================================
+    async function startP2PCall() {
+      if (!walletAddress) {
+        alert('Please connect your wallet first!');
+        return;
+      }
+
+      const calleeWallet = document.getElementById('calleeWalletInput').value.trim();
+      
+      if (!calleeWallet) {
+        alert('Please enter recipient wallet address!');
+        return;
+      }
+
+      try {
+        console.log('📞 Starting P2P call to:', calleeWallet);
+        
+        const response = await apiRequest('/api/start-call', {
+          callerWallet: walletAddress,
+          calleeWallet: calleeWallet
+        });
+
+        await joinRoom(response.token, response.livekitUrl, 'p2p');
+
+      } catch (error) {
+        console.error('❌ Start call error:', error);
+        alert('Failed to start call: ' + error.message);
+      }
+    }
+
+    async function createMeeting() {
+      if (!walletAddress) {
+        alert('Please connect your wallet first!');
+        return;
+      }
+
+      try {
+        console.log('🚀 Creating meeting...');
+        
+        const response = await apiRequest('/api/create-room', {
+          walletAddress: walletAddress
+        });
+
+        alert(`Meeting created! Share this code: ${response.roomId}`);
+        
+        await joinRoom(response.token, response.livekitUrl, 'group');
+
+      } catch (error) {
+        console.error('❌ Create meeting error:', error);
+        alert('Failed to create meeting: ' + error.message);
+      }
+    }
+
+    async function joinMeeting() {
+      if (!walletAddress) {
+        alert('Please connect your wallet first!');
+        return;
+      }
+
+      const roomId = document.getElementById('meetingCodeInput').value.trim().toUpperCase();
+      
+      if (!roomId) {
+        alert('Please enter meeting code!');
+        return;
+      }
+
+      try {
+        console.log('🔗 Joining meeting:', roomId);
+        
+        const response = await apiRequest('/api/join-room', {
+          roomId: roomId,
+          walletAddress: walletAddress
+        });
+
+        await joinRoom(response.token, response.livekitUrl, 'group');
+
+      } catch (error) {
+        console.error('❌ Join meeting error:', error);
+        alert('Failed to join meeting: ' + error.message);
+      }
+    }
+
+    // ============================================
+    // LIVEKIT ROOM FUNCTIONS
+    // ============================================
+    async function joinRoom(token, livekitUrl, callType) {
+      try {
+        // Create room
+        currentRoom = new LivekitClient.Room({
+          adaptiveStream: true,
+          dynacast: true
+        });
+
+        // Setup event listeners
+        setupRoomListeners();
+
+        // Connect
+        await currentRoom.connect(livekitUrl, token);
+        
+        console.log('✅ Connected to LiveKit room');
+
+        // Switch to call screen
+        document.getElementById('homeScreen').classList.add('hidden');
+        document.getElementById('callScreen').classList.remove('hidden');
+
+        // Start call duration timer
+        callStartTime = Date.now();
+        startCallTimer();
+
+        // Enable local media
+        await currentRoom.localParticipant.enableCameraAndMicrophone();
+        
+        localParticipant = currentRoom.localParticipant;
+
+        // Render participants
+        renderParticipants();
+
+      } catch (error) {
+        console.error('❌ Join room error:', error);
+        alert('Failed to join call: ' + error.message);
+      }
+    }
+
+    function setupRoomListeners() {
+      currentRoom.on(LivekitClient.RoomEvent.ParticipantConnected, (participant) => {
+        console.log('👤 Participant joined:', participant.identity);
+        renderParticipants();
+      });
+
+      currentRoom.on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
+        console.log('👋 Participant left:', participant.identity);
+        renderParticipants();
+      });
+
+      currentRoom.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+        console.log('📹 Track subscribed:', track.kind);
+        renderParticipants();
+      });
+
+      currentRoom.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+        console.log('📹 Track unsubscribed:', track.kind);
+        renderParticipants();
+      });
+    }
+
+    function renderParticipants() {
+      const grid = document.getElementById('videoGrid');
+      grid.innerHTML = '';
+
+      // Get all participants
+      const participants = [
+        currentRoom.localParticipant,
+        ...Array.from(currentRoom.remoteParticipants.values())
+      ];
+
+      // Update grid class
+      grid.className = `video-grid video-grid-${Math.min(participants.length, 6)} h-full`;
+
+      // Update participant count
+      document.getElementById('participantCount').textContent = 
+        `${participants.length} participant${participants.length > 1 ? 's' : ''}`;
+
+      // Render each participant
+      participants.forEach((participant, index) => {
+        const tile = document.createElement('div');
+        tile.className = 'video-tile';
+        tile.id = `participant-${participant.sid}`;
+
+        // Create video element
+        const video = document.createElement('video');
+        video.autoplay = true;
+        video.playsInline = true;
+        video.muted = participant === currentRoom.localParticipant;
+
+        // Get video track
+        const videoTrack = participant.videoTrackPublications.values().next().value?.track;
+        
+        if (videoTrack) {
+          videoTrack.attach(video);
+        }
+
+        // Create name label
+        const nameLabel = document.createElement('div');
+        nameLabel.className = 'participant-name';
+        nameLabel.textContent = participant === currentRoom.localParticipant 
+          ? 'You' 
+          : formatAddress(participant.identity);
+
+        tile.appendChild(video);
+        tile.appendChild(nameLabel);
+        grid.appendChild(tile);
+      });
+    }
+
+    function formatAddress(address) {
+      if (!address || address.length < 10) return address;
+      return address.substring(0, 6) + '...' + address.substring(address.length - 4);
+    }
+
+    // ============================================
+    // CONTROL FUNCTIONS
+    // ============================================
+    async function toggleMic() {
+      isMicOn = !isMicOn;
+      await currentRoom.localParticipant.setMicrophoneEnabled(isMicOn);
+      document.getElementById('micIcon').textContent = isMicOn ? '🎤' : '🔇';
+      console.log(isMicOn ? '🎤 Mic on' : '🔇 Mic off');
+    }
+
+    async function toggleCam() {
+      isCamOn = !isCamOn;
+      await currentRoom.localParticipant.setCameraEnabled(isCamOn);
+      document.getElementById('camIcon').textContent = isCamOn ? '📹' : '📷';
+      renderParticipants();
+      console.log(isCamOn ? '📹 Camera on' : '📷 Camera off');
+    }
+
+    async function toggleScreen() {
+      try {
+        isScreenSharing = !isScreenSharing;
+        await currentRoom.localParticipant.setScreenShareEnabled(isScreenSharing);
+        document.getElementById('screenIcon').textContent = isScreenSharing ? '🖥️' : '🖥️';
+        console.log(isScreenSharing ? '🖥️ Screen sharing started' : '🖥️ Screen sharing stopped');
+      } catch (error) {
+        console.error('Screen share error:', error);
+        isScreenSharing = false;
+      }
+    }
+
+    async function leaveCall() {
+      if (!confirm('Are you sure you want to leave the call?')) {
+        return;
+      }
+
+      // Stop call timer
+      if (callDurationInterval) {
+        clearInterval(callDurationInterval);
+callDurationInterval = null;
+}
+// Disconnect from room
+  if (currentRoom) {
+    await currentRoom.disconnect();
+    currentRoom = null;
+  }
+
+  // Reset state
+  localParticipant = null;
+  isMicOn = true;
+  isCamOn = true;
+  isScreenSharing = false;
+  callStartTime = null;
+
+  // Switch back to home screen
+  document.getElementById('callScreen').classList.add('hidden');
+  document.getElementById('homeScreen').classList.remove('hidden');
+
+  console.log('👋 Left call');
+}
+
+// ============================================
+// TIMER FUNCTION
+// ============================================
+function startCallTimer() {
+  callDurationInterval = setInterval(() => {
+    if (!callStartTime) return;
+    
+    const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+    const minutes = Math.floor(elapsed / 60);
+    const seconds = elapsed % 60;
+    
+    document.getElementById('callDuration').textContent = 
+      `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }, 1000);
+}
+
+// ============================================
+// AUTO-CONVERT MEETING CODE TO UPPERCASE
+// ============================================
+document.getElementById('meetingCodeInput')?.addEventListener('input', (e) => {
+  e.target.value = e.target.value.toUpperCase();
+});
+
+// ============================================
+// INITIALIZATION
+// ============================================
+console.log('🚀 BlockCall initialized');
+console.log('API URL:', API_URL);
+�
+```
